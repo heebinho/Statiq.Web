@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using dotless.Core.Parser.Infrastructure;
 using Statiq.Common;
 using Statiq.Core;
 using Statiq.Html;
@@ -11,47 +12,39 @@ namespace Statiq.Web.Pipelines
     {
         public Content(Templates templates)
         {
-            Dependencies.AddRange(nameof(Data), nameof(DirectoryMetadata));
-
-            InputModules = new ModuleList
-            {
-                new ReadFiles(Config.FromSetting<IEnumerable<string>>(WebKeys.ContentFiles))
-            };
+            Dependencies.AddRange(nameof(Inputs), nameof(Data));
 
             ProcessModules = new ModuleList
             {
-                // Concat all documents from externally declared dependencies (exclude explicit dependencies above like "Data")
-                new ConcatDocuments(Config.FromContext<IEnumerable<IDocument>>(ctx => ctx.Outputs.FromPipelines(ctx.Pipeline.GetAllDependencies(ctx).Except(Dependencies).ToArray()))),
+                new GetPipelineDocuments(ContentType.Content),
 
-                // Process directory metadata, sidecar files, and front matter
-                new ProcessMetadata(),
-
-                // Filter out excluded documents
-                new FilterDocuments(Config.FromDocument(doc => !doc.GetBool(WebKeys.Excluded))),
-
-                // Filter out archive documents (they'll get processed by the Archives pipeline)
+                // Filter to non-archive content
                 new FilterDocuments(Config.FromDocument(doc => !Archives.IsArchive(doc))),
 
-                // Enumerate metadata values
-                new EnumerateValues(),
-
-                new AddTitle(),
-                new SetDestination(".html"),
-                new ExecuteIf(Config.FromSetting(WebKeys.OptimizeContentFileNames, true))
+                // Process the content
+                new CacheDocuments
                 {
-                    new OptimizeFileName()
+                    new AddTitle(),
+                    new SetDestination(true),
+                    new ExecuteIf(Config.FromSetting(WebKeys.OptimizeContentFileNames, true))
+                    {
+                        new OptimizeFileName()
+                    },
+                    new RenderContentProcessTemplates(templates),
+                    new ExecuteIf(Config.FromDocument(doc => doc.MediaTypeEquals(MediaTypes.Html)))
+                    {
+                        // Excerpts and headings only work for HTML content
+                        new GenerateExcerpt(),
+                        new GatherHeadings(Config.FromDocument(WebKeys.GatherHeadingsLevel, 1))
+                    }
                 },
-                new RenderProcessTemplates(templates),
-                new GenerateExcerpt(), // Note that if the document was .cshtml the except might contain Razor instructions or might not work at all
-                new GatherHeadings(Config.FromDocument(WebKeys.GatherHeadingsLevel, 1)),
-                new OrderDocuments(),
-                new CreateTree().WithNesting(true, true)
+
+                new OrderDocuments()
             };
 
             PostProcessModules = new ModuleList
             {
-                new FlattenTree(true), // Don't render placeholder pages
-                new RenderPostProcessTemplates(templates)
+                new RenderContentPostProcessTemplates(templates)
             };
 
             OutputModules = new ModuleList

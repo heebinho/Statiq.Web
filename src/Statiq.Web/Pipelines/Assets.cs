@@ -1,26 +1,30 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Statiq.App;
+﻿using System.Collections.Generic;
+using System.Linq;
 using Statiq.Common;
 using Statiq.Core;
-using Statiq.Html;
-using Statiq.Less;
-using Statiq.Markdown;
-using Statiq.Razor;
-using Statiq.Yaml;
+using Statiq.Web.Modules;
 
 namespace Statiq.Web.Pipelines
 {
     public class Assets : Pipeline
     {
-        public Assets()
+        public Assets(Templates templates)
         {
-            Isolated = true;
+            Dependencies.Add(nameof(Inputs));
 
             ProcessModules = new ModuleList
             {
-                new CopyFiles("**/*{!.html,!.cshtml,!.md,!.less,!.yml,!.yaml,!.json,!.scss,!.config,}")
+                new GetPipelineDocuments(ContentType.Asset),
+                templates.GetModule(ContentType.Asset, Phase.Process),
+                new SetDestination()
+            };
+
+            PostProcessModules = new ModuleList(templates.GetModule(ContentType.Asset, Phase.PostProcess));
+
+            OutputModules = new ModuleList
+            {
+                new FilterDocuments(Config.FromDocument(WebKeys.ShouldOutput, true)),
+                new WriteFiles()
             };
         }
     }

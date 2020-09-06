@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Statiq.App;
 using Statiq.Common;
+using Statiq.Core;
 using Statiq.Web.Commands;
 using Statiq.Web.Modules;
 
@@ -33,7 +34,8 @@ namespace Statiq.Web
                 .AddExcludedPaths()
                 .SetOutputPath()
                 .AddThemePaths()
-                .AddDefaultWebSettings();
+                .AddDefaultWebSettings()
+                .ConfigureEngine(e => e.LogAndCheckVersion(typeof(BootstrapperExtensions).Assembly, "Statiq Web", WebKeys.MinimumStatiqWebVersion));
 
         private static Bootstrapper AddWebServices(this Bootstrapper bootstrapper) =>
             bootstrapper
@@ -131,9 +133,8 @@ namespace Statiq.Web
             bootstrapper
                 .AddSettingsIfNonExisting(new Dictionary<string, object>
                 {
-                    { WebKeys.ContentFiles, "**/{!_,}*.{html,cshtml,md}" },
-                    { WebKeys.DataFiles, $"**/{{!_,}}*.{{{string.Join(",", ParseDataContent.SupportedExtensions)}}}" },
-                    { WebKeys.DirectoryMetadataFiles, "**/_{d,D}irectory.{json,yaml,yml}" },
+                    { WebKeys.InputFiles, "**/{!_,}*" },
+                    { WebKeys.DirectoryMetadataFiles, "**/_{d,D}irectory.*" },
                     { WebKeys.Xref, Config.FromDocument(doc => doc.GetTitle().Replace(' ', '-')) },
                     { WebKeys.Excluded, Config.FromDocument(doc => doc.GetDateTime(WebKeys.Published) > DateTime.Today.AddDays(1)) }, // Add +1 days so the threshold is midnight on the current day
                     { WebKeys.PublishedUsesLastModifiedDate, true }
@@ -147,14 +148,11 @@ namespace Statiq.Web
         /// <returns>The bootstrapper.</returns>
         public static Bootstrapper AddHostingCommands(this Bootstrapper bootstrapper)
         {
-            _ = bootstrapper ?? throw new ArgumentNullException(nameof(bootstrapper));
+            bootstrapper.ThrowIfNull(nameof(bootstrapper));
             bootstrapper.AddCommand<PreviewCommand>();
             bootstrapper.AddCommand<ServeCommand>();
             return bootstrapper;
         }
-
-        public static Bootstrapper SetDefaultTemplate(this Bootstrapper bootstrapper, string defaultTemplate) =>
-            bootstrapper.ConfigureTemplates(templates => templates.DefaultTemplate = defaultTemplate);
 
         /// <summary>
         /// Configures the set of template modules.

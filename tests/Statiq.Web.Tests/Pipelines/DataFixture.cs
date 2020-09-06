@@ -36,6 +36,49 @@ namespace Statiq.Web.Tests.Pipelines
             }
 
             [Test]
+            public async Task DoesNotClearDataContentIfNotSet()
+            {
+                // Given
+                Bootstrapper bootstrapper = Bootstrapper.Factory
+                    .CreateWeb(Array.Empty<string>());
+                TestFileProvider fileProvider = new TestFileProvider
+                {
+                    { "/input/a/b/c.json", "{ \"Foo\": \"Bar\" }" }
+                };
+
+                // When
+                BootstrapperTestResult result = await bootstrapper.RunTestAsync(fileProvider);
+
+                // Then
+                result.ExitCode.ShouldBe((int)ExitCode.Normal);
+                IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
+                document["Foo"].ShouldBe("Bar");
+                (await document.GetContentStringAsync()).ShouldBe("{ \"Foo\": \"Bar\" }");
+            }
+
+            [Test]
+            public async Task ClearsDataContentIfSet()
+            {
+                // Given
+                Bootstrapper bootstrapper = Bootstrapper.Factory
+                    .CreateWeb(Array.Empty<string>())
+                    .AddSetting(WebKeys.ClearDataContent, true);
+                TestFileProvider fileProvider = new TestFileProvider
+                {
+                    { "/input/a/b/c.json", "{ \"Foo\": \"Bar\" }" }
+                };
+
+                // When
+                BootstrapperTestResult result = await bootstrapper.RunTestAsync(fileProvider);
+
+                // Then
+                result.ExitCode.ShouldBe((int)ExitCode.Normal);
+                IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
+                document["Foo"].ShouldBe("Bar");
+                (await document.GetContentStringAsync()).ShouldBeEmpty();
+            }
+
+            [Test]
             public async Task ParsesYaml()
             {
                 // Given
@@ -55,52 +98,12 @@ namespace Statiq.Web.Tests.Pipelines
             }
 
             [Test]
-            public async Task HonorsDataFilesSetting()
-            {
-                // Given
-                Bootstrapper bootstrapper = Bootstrapper.Factory.CreateWeb(Array.Empty<string>());
-                bootstrapper.AddSetting(WebKeys.DataFiles, "x/**/*.json");
-                TestFileProvider fileProvider = new TestFileProvider
-                {
-                    { "/input/a/b/c.json", "{ \"Foo\": \"Bar\" }" },
-                    { "/input/x/y/z.json", "{ \"Foo\": \"Buz\" }" }
-                };
-
-                // When
-                BootstrapperTestResult result = await bootstrapper.RunTestAsync(fileProvider);
-
-                // Then
-                result.ExitCode.ShouldBe((int)ExitCode.Normal);
-                IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
-                document["Foo"].ShouldBe("Buz");
-            }
-
-            [Test]
-            public async Task SupportsMultipleDataFilesPatterns()
-            {
-                // Given
-                Bootstrapper bootstrapper = Bootstrapper.Factory.CreateWeb(Array.Empty<string>());
-                bootstrapper.AddSetting(WebKeys.DataFiles, new[] { "a/**/*.json", "x/**/*.json" });
-                TestFileProvider fileProvider = new TestFileProvider
-                {
-                    { "/input/a/b/c.json", "{ \"Foo\": \"Bar\" }" },
-                    { "/input/x/y/z.json", "{ \"Foo\": \"Buz\" }" }
-                };
-
-                // When
-                BootstrapperTestResult result = await bootstrapper.RunTestAsync(fileProvider);
-
-                // Then
-                result.ExitCode.ShouldBe((int)ExitCode.Normal);
-                result.Outputs[nameof(Data)][Phase.Process].Select(x => x["Foo"]).ShouldBe(new[] { "Bar", "Buz" }, true);
-            }
-
-            [Test]
             public async Task IncludesDocumentsFromDependencies()
             {
                 // Given
-                Bootstrapper bootstrapper = Bootstrapper.Factory.CreateWeb(Array.Empty<string>());
-                bootstrapper.AddSetting(WebKeys.DataFiles, "x/**/*.json");
+                Bootstrapper bootstrapper = Bootstrapper.Factory
+                    .CreateWeb(Array.Empty<string>())
+                    .AddSetting(WebKeys.InputFiles, "x/**/*");
                 bootstrapper.BuildPipeline("Test", builder => builder
                     .WithInputReadFiles("a/**/*.json")
                     .AsDependencyOf(nameof(Data)));
@@ -308,7 +311,6 @@ namespace Statiq.Web.Tests.Pipelines
                 IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
                 document["Fizz"].ShouldBe("Buzz");
                 document["Foo"].ShouldBe("Bar");
-                (await document.GetContentStringAsync()).ShouldBe("{ \"Foo\": \"Bar\" }");
             }
 
             [Test]
@@ -334,7 +336,6 @@ Foo: Bar"
                 IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
                 document["Fizz"].ShouldBe("Buzz");
                 document["Foo"].ShouldBe("Bar");
-                (await document.GetContentStringAsync()).ShouldBe("Foo: Bar");
             }
 
             [Test]
@@ -362,7 +363,6 @@ Foo: Bar"
                 document["Fizz"].ShouldBe("Buzz");
                 document["Blue"].ShouldBe("Green");
                 document["Foo"].ShouldBe("Bar");
-                (await document.GetContentStringAsync()).ShouldBe("{ \"Foo\": \"Bar\" }");
             }
 
             [Test]
@@ -384,29 +384,6 @@ Foo: Bar"
                 IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
                 document["Foo"].ShouldBe("Bar");
                 document["Fizz"].ShouldBe("Buzz");
-                (await document.GetContentStringAsync()).ShouldBe("{ \"Foo\": \"Bar\" }");
-            }
-
-            [Test]
-            public async Task ProcessesJsonSidecarFileWithDifferentExtension()
-            {
-                // Given
-                Bootstrapper bootstrapper = Bootstrapper.Factory.CreateWeb(Array.Empty<string>());
-                bootstrapper.AddSetting(WebKeys.DataFiles, "**/*.foo");
-                TestFileProvider fileProvider = new TestFileProvider
-                {
-                    { "/input/a/b/c.foo", "Foobar" },
-                    { "/input/a/b/_c.json", "{ \"Fizz\": \"Buzz\" }" }
-                };
-
-                // When
-                BootstrapperTestResult result = await bootstrapper.RunTestAsync(fileProvider);
-
-                // Then
-                result.ExitCode.ShouldBe((int)ExitCode.Normal);
-                IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
-                document["Fizz"].ShouldBe("Buzz");
-                (await document.GetContentStringAsync()).ShouldBe("Foobar");
             }
 
             [Test]
@@ -426,8 +403,8 @@ Foo: Bar"
                 // Then
                 result.ExitCode.ShouldBe((int)ExitCode.Normal);
                 IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
+                document.Destination.ShouldBe("a/b/c.json");
                 document["Foo"].ShouldBe("Bar");
-                (await document.GetContentStringAsync()).ShouldBe("{ \"Foo\": \"Bar\" }");
             }
 
             [Test]
@@ -453,6 +430,33 @@ Foo: Bar"
                 // Then
                 result.ExitCode.ShouldBe((int)ExitCode.Normal);
                 result.Outputs[nameof(Data)][Phase.Process].Select(x => x["Current"]).ShouldBe(new[] { "Apple", "Orange" }, true);
+            }
+
+            [Test]
+            public async Task JsonScriptReturn()
+            {
+                // Given
+                Bootstrapper bootstrapper = Bootstrapper.Factory.CreateWeb(Array.Empty<string>());
+                TestFileProvider fileProvider = new TestFileProvider
+                {
+                    {
+                        "/input/a/b/c.json",
+                        @"
+Script: true
+---
+int a = 1;
+int b = 2;
+return $""{{ \""Foo\"": \""{ a + b }\"" }}"";"
+                    }
+                };
+
+                // When
+                BootstrapperTestResult result = await bootstrapper.RunTestAsync(fileProvider);
+
+                // Then
+                result.ExitCode.ShouldBe((int)ExitCode.Normal);
+                IDocument document = result.Outputs[nameof(Data)][Phase.Process].ShouldHaveSingleItem();
+                document["Foo"].ShouldBe("3");
             }
         }
     }

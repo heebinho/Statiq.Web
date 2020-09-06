@@ -9,31 +9,23 @@ namespace Statiq.Web.Pipelines
 {
     public class Data : Pipeline
     {
-        public Data()
+        public Data(Templates templates)
         {
-            Dependencies.Add(nameof(DirectoryMetadata));
-
-            InputModules = new ModuleList
-            {
-                new ReadFiles(Config.FromSetting<IEnumerable<string>>(WebKeys.DataFiles))
-            };
+            Dependencies.Add(nameof(Inputs));
 
             ProcessModules = new ModuleList
             {
-                // Concat all documents from externally declared dependencies (exclude explicit dependencies above)
-                new ConcatDocuments(Config.FromContext<IEnumerable<IDocument>>(ctx => ctx.Outputs.FromPipelines(ctx.Pipeline.GetAllDependencies(ctx).Except(Dependencies).ToArray()))),
+                // We ran the data templates against documents in Inputs, but haven't run it against documents from dependencies
+                new GetPipelineDocuments(ContentType.Data, templates.GetModule(ContentType.Data, Phase.Process)),
 
-                // Process directory metadata, sidecar files, front matter, and data content
-                new ProcessMetadata(),
+                // Filter to non-archive, non-feed data
+                new FilterDocuments(Config.FromDocument(doc => !Archives.IsArchive(doc) && !Feeds.IsFeed(doc))),
 
-                // Filter out excluded documents
-                new FilterDocuments(Config.FromDocument(doc => !doc.GetBool(WebKeys.Excluded))),
-
-                // Filter out feed documents (they'll get processed by the Feed pipeline)
-                new FilterDocuments(Config.FromDocument(doc => !Feeds.IsFeed(doc))),
-
-                // Enumerate metadata values
-                new EnumerateValues(),
+                // Clear the content so data documents can be safely sent to the content pipeline or rendered with a layout
+                new ExecuteIf(Config.FromDocument<bool>(WebKeys.ClearDataContent))
+                {
+                    new SetContent(string.Empty)
+                },
 
                 // Set the destination and optimize filenames
                 new SetDestination(),
@@ -42,6 +34,8 @@ namespace Statiq.Web.Pipelines
                     new OptimizeFileName()
                 }
             };
+
+            PostProcessModules = new ModuleList(templates.GetModule(ContentType.Data, Phase.PostProcess));
 
             OutputModules = new ModuleList
             {

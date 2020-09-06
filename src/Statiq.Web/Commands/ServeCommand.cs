@@ -26,15 +26,13 @@ namespace Statiq.Web.Commands
 
         public ServeCommand(
             IConfiguratorCollection configurators,
-            IConfigurationSettings configurationSettings,
+            Settings settings,
             IServiceCollection serviceCollection,
-            IConfigurationRoot configurationRoot,
             Bootstrapper bootstrapper)
             : base(
                   configurators,
-                  configurationSettings,
+                  settings,
                   serviceCollection,
-                  configurationRoot,
                   bootstrapper)
         {
         }
@@ -148,7 +146,7 @@ namespace Statiq.Web.Commands
             // Shutdown
             logger.LogInformation("Shutting down");
 
-            if (serveFolderWatcher != null)
+            if (serveFolderWatcher is object)
             {
                 serveFolderWatcher.EnableRaisingEvents = false;
                 serveFolderWatcher.Changed -= OnFileChanged;

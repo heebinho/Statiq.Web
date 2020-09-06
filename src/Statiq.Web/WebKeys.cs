@@ -1,3 +1,7 @@
+using System.Collections.Generic;
+using System.ComponentModel;
+using Statiq.Common;
+
 namespace Statiq.Web
 {
     public static class WebKeys
@@ -5,18 +9,22 @@ namespace Statiq.Web
         ////////// Global
 
         /// <summary>
-        /// The globbing pattern(s) that will be used to read content files.
+        /// The globbing pattern(s) used to read input files.
         /// </summary>
-        public const string ContentFiles = nameof(ContentFiles);
+        /// <remarks>
+        /// The files will be processed by the appropriate pipeline based on their
+        /// media type and registered <see cref="Templates"/>. Files that don't match
+        /// templates for data or content are treated as assets.
+        /// </remarks>
+        public const string InputFiles = nameof(InputFiles);
 
         /// <summary>
-        /// The globbing pattern(s) that will be used to read data files.
+        /// The globbing pattern(s) that will be used to filter directory metadata files.
         /// </summary>
-        public const string DataFiles = nameof(DataFiles);
-
-        /// <summary>
-        /// The globbing pattern(s) that will be used to read directory metadata.
-        /// </summary>
+        /// <remarks>
+        /// Any files that match the pattern will be further filtered by media types
+        /// supported by <see cref="Templates"/> that match <see cref="ContentType.Data"/>.
+        /// </remarks>
         public const string DirectoryMetadataFiles = nameof(DirectoryMetadataFiles);
 
         public const string OptimizeContentFileNames = nameof(OptimizeContentFileNames);
@@ -73,17 +81,17 @@ namespace Statiq.Web
         public const string ThemePaths = nameof(ThemePaths);
 
         /// <summary>
-        /// Input paths specified as settings.
+        /// Input directory paths specified as settings.
         /// </summary>
         public const string InputPaths = nameof(InputPaths);
 
         /// <summary>
-        /// Output path specific as a setting.
+        /// Output directory path specific as a setting.
         /// </summary>
         public const string OutputPath = nameof(OutputPath);
 
         /// <summary>
-        /// Excluded paths specified as a setting.
+        /// Excluded directory paths specified as a setting.
         /// </summary>
         public const string ExcludedPaths = nameof(ExcludedPaths);
 
@@ -92,12 +100,63 @@ namespace Statiq.Web
         /// </summary>
         public const string GatherHeadingsLevel = nameof(GatherHeadingsLevel);
 
+        /// <summary>
+        /// Converts relative links to absolute links.
+        /// </summary>
+        public const string MakeLinksAbsolute = nameof(MakeLinksAbsolute);
+
+        /// <summary>
+        /// Converts relative links to root-relative links.
+        /// </summary>
+        public const string MakeLinksRootRelative = nameof(MakeLinksRootRelative);
+
+        /// <summary>
+        /// Sets a semantic version range of Statiq Web that must be used.
+        /// Particularly useful for themes to set a supported version range.
+        /// </summary>
+        public const string MinimumStatiqWebVersion = nameof(MinimumStatiqWebVersion);
+
         ////////// Document
+
+        /// <summary>
+        /// Indicates the type of content (and thus which pipeline will process the file).
+        /// </summary>
+        /// <remarks>
+        /// This will be automatically set based on the media type of the file and other metadata,
+        /// but it can be further adjusted by setting manually. For example, if you have a ".cshtml"
+        /// file but you want to copy it to the output folder instead of processing as a Razor file,
+        /// set the <see cref="ContentType"/> to <see cref="ContentType.Asset"/>.
+        /// </remarks>
+        public const string ContentType = nameof(ContentType);
+
+        /// <summary>
+        /// Changes the media type of the document (normally this is interpreted from the file extension).
+        /// </summary>
+        /// <remarks>
+        /// For example, to force script evaluation for a file that isn't ".cs" or ".csx", set the
+        /// <see cref="MediaType"/> front matter to <see cref="MediaTypes.CSharp"/>.
+        /// </remarks>
+        public const string MediaType = nameof(MediaType);
+
+        /// <summary>
+        /// Set to <c>true</c> to indicate that the content contains a script that should be evaluated before processing normally.
+        /// </summary>
+        public const string Script = nameof(Script);
+
+        /// <summary>
+        /// Indicates that if a script file has a second extension such as "foo.md.csx" that the script extension should be removed
+        /// and the preceding extension should be used to reset the media type, and thus the templates that will be executed
+        /// (the default is <c>true</c>).
+        /// </summary>
+        public const string RemoveScriptExtension = nameof(RemoveScriptExtension);
 
         public const string Title = nameof(Title);
 
         public const string Description = nameof(Description);
 
+        /// <summary>
+        /// The author of the site, post, or page (can be set at any level).
+        /// </summary>
         public const string Author = nameof(Author);
 
         public const string Image = nameof(Image);
@@ -134,6 +193,11 @@ namespace Statiq.Web
         /// By default content files are output and data files are not.
         /// </summary>
         public const string ShouldOutput = nameof(ShouldOutput);
+
+        /// <summary>
+        /// Set this to <c>true</c> to clear the content of data files after processing.
+        /// </summary>
+        public const string ClearDataContent = nameof(ClearDataContent);
 
         /// <summary>
         /// Indicates the layout file that should be used for this document.
@@ -190,6 +254,18 @@ namespace Statiq.Web
         /// with the source documents will be generated.
         /// </summary>
         public const string ArchiveKey = nameof(ArchiveKey);
+
+        /// <summary>
+        /// An <c>IEqualityComparer&lt;object&gt;</c> to use for comparing archive groups.
+        /// </summary>
+        /// <remarks>
+        /// A scripted metadata value can be used to return the appropriate comparer and
+        /// the <see cref="IEqualityComparerExtensions.ToConvertingEqualityComparer{T}(IEqualityComparer{T})"/> extension method
+        /// can be used to convert a typed comparer into a <c>IEqualityComparer&lt;object&gt;</c>.
+        /// For example, to ignore case when generating an archive for tags, you can use
+        /// <c>ArchiveKeyComparer: => StringComparer.OrdinalIgnoreCase.ToConvertingEqualityComparer()</c>.
+        /// </remarks>
+        public const string ArchiveKeyComparer = nameof(ArchiveKeyComparer);
 
         /// <summary>
         /// The number of items on each group page (or all group items if not defined).
@@ -262,7 +338,7 @@ namespace Statiq.Web
 
         public const string FeedDescription = nameof(FeedDescription);  // Defaults to WebKeys.Description
 
-        public const string FeedAuthor = nameof(FeedAuthor);
+        public const string FeedAuthor = nameof(FeedAuthor);  // Defaults to WebKeys.Author
 
         public const string FeedPublished = nameof(FeedPublished);
 

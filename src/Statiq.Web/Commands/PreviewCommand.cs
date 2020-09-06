@@ -27,20 +27,18 @@ namespace Statiq.Web.Commands
 
         public PreviewCommand(
             IConfiguratorCollection configurators,
-            IConfigurationSettings configurationSettings,
+            Settings settings,
             IServiceCollection serviceCollection,
-            IConfigurationRoot configurationRoot,
             Bootstrapper bootstrapper)
             : base(
                   configurators,
-                  configurationSettings,
+                  settings,
                   serviceCollection,
-                  configurationRoot,
                   bootstrapper)
         {
             // Add a lazy ResetCache value - we need to add it here and make it lazy since
             // the configuration settings are disposed once the engine is created
-            configurationSettings[Keys.ResetCache] = _resetCache;
+            settings[Keys.ResetCache] = _resetCache;
         }
 
         protected override async Task<int> ExecuteEngineAsync(
@@ -155,7 +153,7 @@ namespace Statiq.Web.Commands
                         _resetCache.Value = existingResetCacheSetting ?? false;
                     }
 
-                    if (previewServer == null)
+                    if (previewServer is null)
                     {
                         if (outputDirectory.Exists)
                         {
@@ -241,7 +239,7 @@ namespace Statiq.Web.Commands
         {
             public bool Value { get; set; }
 
-            public object Get(IMetadata metadata) => Value;
+            public object Get(string key, IMetadata metadata) => Value;
         }
     }
 }

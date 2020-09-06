@@ -11,9 +11,9 @@ namespace Statiq.Web
     {
         public static bool TryGetXrefDocument(this IExecutionContext context, string xref, out IDocument document, out string error)
         {
-            _ = context ?? throw new ArgumentNullException(nameof(context));
+            context.ThrowIfNull(nameof(context));
 
-            DocumentList<IDocument> documents = context.Outputs[nameof(Pipelines.Content)].Flatten();
+            DocumentList<IDocument> documents = context.Outputs.FromPipeline(nameof(Pipelines.Content)).Flatten();
             List<(NormalizedPath, string, IDocument)> xrefs = documents.Select(x => (x.Source, x.GetString(WebKeys.Xref), x)).ToList();
             ImmutableArray<IDocument> matches = documents
                 .Where(x => x.GetString(WebKeys.Xref)?.Equals(xref, StringComparison.OrdinalIgnoreCase) == true)
@@ -44,7 +44,7 @@ namespace Statiq.Web
             if (context.TryGetXrefDocument(xref, out IDocument document, out error))
             {
                 link = document.GetLink(includeHost);
-                return link != null;
+                return link is object;
             }
             link = default;
             return false;

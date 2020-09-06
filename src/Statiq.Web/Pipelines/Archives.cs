@@ -1,15 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using Statiq.App;
+using Microsoft.Extensions.Logging;
 using Statiq.Common;
 using Statiq.Core;
-using Statiq.Html;
-using Statiq.Markdown;
-using Statiq.Razor;
 using Statiq.Web.Modules;
-using Statiq.Yaml;
 
 namespace Statiq.Web.Pipelines
 {
@@ -17,31 +11,25 @@ namespace Statiq.Web.Pipelines
     {
         public Archives(Templates templates)
         {
-            Dependencies.AddRange(nameof(Content), nameof(Data));
-
-            InputModules = new ModuleList
-            {
-                new ReadFiles(Config.FromSetting<IEnumerable<string>>(WebKeys.ContentFiles))
-            };
+            Dependencies.AddRange(nameof(Inputs), nameof(Content), nameof(Data));
 
             ProcessModules = new ModuleList
             {
-                // Process front matter and sidecar files
-                new ProcessMetadata(),
+                // Include all non-asset documents (filtered to archives next)
+                new GetPipelineDocuments(Config.FromDocument(doc => doc.Get<ContentType>(WebKeys.ContentType) != ContentType.Asset || doc.MediaTypeEquals(MediaTypes.CSharp))),
 
-                // Filter just to archive documents
+                // Filter to archives
                 new FilterDocuments(Config.FromDocument(IsArchive)),
 
                 new ForEachDocument
                 {
-                    new ExecuteConfig(Config.FromDocument(archiveDoc =>
+                    new ExecuteConfig(Config.FromDocument((archiveDoc, ctx) =>
                     {
                         ModuleList modules = new ModuleList();
 
                         // Get outputs from the pipeline(s)
                         modules.Add(
                             new ReplaceDocuments(archiveDoc.GetList(WebKeys.ArchivePipelines, new[] { nameof(Content) }).ToArray()),
-                            new FlattenTree(true),
                             new MergeMetadata(Config.FromValue(archiveDoc.Yield())).KeepExisting());
 
                         // Filter by document source
@@ -69,8 +57,18 @@ namespace Statiq.Web.Pipelines
                         {
                             // Group by the archive key
                             string archiveKey = archiveDoc.GetRaw(WebKeys.ArchiveKey) as string;
+                            IEqualityComparer<object> keyComparer = null;
+                            if (archiveDoc.ContainsKey(WebKeys.ArchiveKeyComparer))
+                            {
+                                keyComparer = archiveDoc.Get<IEqualityComparer<object>>(WebKeys.ArchiveKeyComparer);
+                                if (keyComparer is null)
+                                {
+                                    ctx.LogWarning($"Could not convert value of {WebKeys.ArchiveKeyComparer} to an IEqualityComparer<object>, try using the {nameof(IEqualityComparerExtensions.ToConvertingEqualityComparer)} extension method");
+                                }
+                            }
                             modules.Add(
                                 new GroupDocuments(Config.FromDocument(doc => doc.GetList(archiveKey ?? WebKeys.ArchiveKey, new object[] { })))
+                                        .WithComparer(keyComparer)
                                         .WithSource(archiveDoc.Source),
                                 new MergeDocuments(Config.FromValue(archiveDoc.Yield())).KeepExistingMetadata());
 
@@ -100,31 +98,48 @@ namespace Statiq.Web.Pipelines
                                 GetTitleAndDestinationModules(archiveDoc));
                             topLevel.Add(GetTopLevelIndexModules(archiveDoc));
 
-                            // Add the group modules and create a top-level index document in a branch
-                            modules.Add(new ExecuteBranch(paginateGroups).Branch(topLevel));
+                            // Add the group modules and create a top-level index document in a branch, but only if we've actually created groups
+                            modules.Add(new ExecuteIf(
+                                Config.FromContext(ctx => ctx.Inputs.Length > 0),
+                                new ExecuteBranch(paginateGroups).Branch(topLevel)));
                         }
                         else
                         {
                             // We weren't grouping so now we've got a sequence of documents
+                            // Only produce them if we have input documents
+                            ModuleList archiveModules = new ModuleList();
 
                             // Paginate the documents
                             if (archiveDoc.ContainsKey(WebKeys.ArchivePageSize))
                             {
-                                modules.Add(
+                                archiveModules.Add(
                                     new PaginateDocuments(archiveDoc.GetInt(WebKeys.ArchivePageSize))
                                         .WithSource(archiveDoc.Source),
                                     new MergeDocuments(Config.FromValue(archiveDoc.Yield())).KeepExistingMetadata());
-                                modules.Add(GetTitleAndDestinationModules(archiveDoc));
+                                archiveModules.Add(GetTitleAndDestinationModules(archiveDoc));
                             }
                             else
                             {
                                 // We didn't make pages so create a top-level document
-                                modules.Add(GetTopLevelIndexModules(archiveDoc));
+                                archiveModules.Add(GetTopLevelIndexModules(archiveDoc));
                             }
+
+                            modules.Add(new ExecuteIf(Config.FromContext(ctx => ctx.Inputs.Length > 0), archiveModules));
                         }
 
-                        // Render any markdown content
-                        modules.Add(new RenderProcessTemplates(templates));
+                        // If it's a script, evaluate it now (deferred from inputs pipeline)
+                        modules.Add(new ProcessScripts(false));
+
+                        // Now execute templates
+                        modules.Add(
+                            new ExecuteSwitch(Config.FromDocument(doc => doc.Get<ContentType>(WebKeys.ContentType)))
+                                .Case(ContentType.Data, templates.GetModule(ContentType.Data, Phase.Process))
+                                .Case(
+                                    ContentType.Content,
+                                    (IModule)new CacheDocuments
+                                    {
+                                        new RenderContentProcessTemplates(templates)
+                                    }));
 
                         return modules;
                     }))
@@ -133,11 +148,14 @@ namespace Statiq.Web.Pipelines
 
             PostProcessModules = new ModuleList
             {
-                new RenderPostProcessTemplates(templates)
+                new ExecuteSwitch(Config.FromDocument(doc => doc.Get<ContentType>(WebKeys.ContentType)))
+                    .Case(ContentType.Data, templates.GetModule(ContentType.Data, Phase.PostProcess))
+                    .Case(ContentType.Content, (IModule)new RenderContentPostProcessTemplates(templates))
             };
 
             OutputModules = new ModuleList
             {
+                new FilterDocuments(Config.FromDocument(WebKeys.ShouldOutput, true)),
                 new WriteFiles()
             };
         }
@@ -146,7 +164,7 @@ namespace Statiq.Web.Pipelines
         {
             new ReplaceDocuments(Config.FromContext(ctx => archiveDoc.Clone(new MetadataItems { { Keys.Children, ctx.Inputs } }).Yield())),
             new AddTitle(),
-            new SetDestination(Config.FromValue(archiveDoc.Destination.ChangeExtension(".html")), true)
+            new SetDestination(Config.FromSettings(s => archiveDoc.Destination.ChangeExtension(s.GetPageFileExtensions()[0])))
         };
 
         private static IModule[] GetTitleAndDestinationModules(IDocument archiveDoc) => new IModule[]
@@ -169,7 +187,7 @@ namespace Statiq.Web.Pipelines
                     return index <= 1 ? title : (title + $" (Page {index})");
                 })).KeepExisting(false),
             new SetDestination(
-                Config.FromDocument(doc =>
+                Config.FromDocument((doc, ctx) =>
                 {
                     if (doc.ContainsKey(WebKeys.ArchiveDestination))
                     {
@@ -187,12 +205,15 @@ namespace Statiq.Web.Pipelines
                     {
                         destination = destination.Combine(index.ToString());
                     }
-                    return destination.AppendExtension(".html");
+                    return destination.AppendExtension(ctx.Settings.GetPageFileExtensions()[0]);
                 }),
                 true)
         };
 
         public static bool IsArchive(IDocument document) =>
-            document.ContainsKey(WebKeys.ArchiveSources) || document.ContainsKey(WebKeys.ArchiveFilter) || document.ContainsKey(WebKeys.ArchiveKey);
+            document.ContainsKey(WebKeys.ArchivePipelines)
+                || document.ContainsKey(WebKeys.ArchiveSources)
+                || document.ContainsKey(WebKeys.ArchiveFilter)
+                || document.ContainsKey(WebKeys.ArchiveKey);
     }
 }

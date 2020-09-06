@@ -1,5 +1,64 @@
-# 1.0.0-alpha.22
+# 1.0.0-beta.6
 
+# 1.0.0-beta.5
+
+- Some tweaks to the new .NET template to prefer the directory name.
+
+# 1.0.0-beta.4
+
+- Updated Statiq Framework to version [1.0.0-beta.21](https://github.com/statiqdev/Statiq.Framework/releases/tag/v1.0.0-beta.21).
+- **Breaking change:** Removed the `IBootstrapper.SetDefaultTemplate()` extension given more general use of templates. The "default" template should now be specified
+  by setting a templates for the HTML media type (by default it's still Razor, so this breaking change won't really affect anyone right now).
+- **Breaking Change:** Removed the `AssetFiles`, `DataFiles`, and `ContentFiles` settings and replaced with a single `InputFiles` setting for finding all input files.
+  The target pipeline and content type are now determined from the media type and metadata of the document instead of via globbing patterns for each pipeline.
+  If you previously had asset files that started with an underscore (such as a `_redirects` file), you will need to explicitly add those to the `InputFiles` patterns
+  along with the default pattern: `.AddSetting(WebKeys.InputFiles, new [] { "**/{!_,}*", "_redirects" })`.
+- Added a `ClearDataContent` document setting that clears content from data documents (for example, to support passing the data file to layouts).
+  Set this for a single data document to clear it's content or globally with `.AddSetting(WebKeys.ClearDataContent, true)` to clear the content of all data files.
+- Made the concept of "templates" more general. They now essentially use the media type of a document (typically inferred from file extension) to determine which pipeline to
+  process the document in and what module to use for processing. Templates can now be defined for assets, data, and content and for the `Process` and `PostProcess` phases for each.
+- Added a `ContentType` document setting to override the calculated pipeline and processing for a document (values are `Asset`, `Data`, and `Content`).
+  For example, setting the `ContentType` of a file named "foo.json" to `Asset` will treat the file as an asset and will not process it's content as data.
+- Added a `MediaType` document setting to override the media type calculated from the file extension.
+- Added a `RemoveScriptExtension` document setting that will convert script file names like "foo.json.csx" to "foo.json" and reset their media types so the script output can be seamlessly
+  processed by the appropriate pipeline and modules (for example, "foo.json.csx" will get processed by the `Data` pipeline while "foo.md.csx" will get processed by the `Content` pipeline).
+  The default value is `true`.
+- Removed the `Isolated` flag from the `Assets` pipeline so the set of copied assets can be retrieved from other pipelines (I.e. to generate a list of images in a directory).
+- Added support for script files (`.csx` or `.cs`) to the `Archive` pipeline (I.e. to generate JSON APIs from a collection of documents or data).
+- Added a `Script` document setting that will treat a file as a C# script, even if the extension is not `.cs` or `.csx`.
+- Added a common `Inputs` pipeline that consolidates directory metadata, sidecar, and front matter parsing and supports evaluating scripts with a `.csx` or `.cs` extension.
+  Detailed script usage will be documented on the site, but generally if the script returns null the original input document is returned, if the script returns a string the content
+  of the document will be changed to the return value, or if the script returns a document(s) those will be added to the appropriate pipeline.
+- New `Statiq.Web.Templates` project with a Statiq Web templates for the `dotnet new` CLI command (#915, thanks @devlead).
+
+# 1.0.0-beta.3
+
+- **Breaking change:** Updated Statiq Framework to version [1.0.0-beta.20](https://github.com/statiqdev/Statiq.Framework/releases/tag/v1.0.0-beta.20).
+  This version of Statiq Framework contains breaking changes which Statiq Web will inherit.
+- The `Content` pipeline no longer creates any metadata-based tree structure (I.e. the metadata key `Children` is no longer set). Instead, consider
+  using methods from `Outputs` such as `Outputs.GetChildren(doc)` or the new `OutputPages` property (see the Statiq Framework 1.0.0-beta.20 release notes for more details).
+- Added a new `MinimumStatiqWebVersion` key to perform a check for the minimum allowed version of Statiq Web. If this is set to something higher than the current version
+  of Statiq Web, an error will be logged and execution will stop. Any setting that starts will this key will be considered, so it's recommended the use of this key be
+  suffixed with a unique identifier to avoid conflicts between components (for example `MinimumStatiqWebVersion-MySite`). While not required or typically necessary for sites,
+  it's recommended that themes set this in their theme settings file (for example `MinimumStatiqWebVersion-CleanBlog`).
+
+# 1.0.0-beta.2
+
+- Updated Statiq Framework to version [1.0.0-beta.19](https://github.com/statiqdev/Statiq.Framework/releases/tag/v1.0.0-beta.19).
+  This version of Statiq Framework includes internal refactoring that provides a big performance boost.
+- Added a `AssetFiles` settings to configure the globbing patterns used for copying assets.
+
+# 1.0.0-beta.1
+
+- **Breaking change:** Updated Statiq Framework to version [1.0.0-beta.18](https://github.com/statiqdev/Statiq.Framework/releases/tag/v1.0.0-beta.18).
+  This version of Statiq Framework contains breaking changes which Statiq Web will inherit.
+- **Breaking change:** The `Content` pipeline no longer nests output documents and instead all documents are now output.
+  `IEnumerable<IDocument>.FilterDestinations("*.html")` or `Outputs["*.html"]` can be used to get "root" documents.
+- Added a `MakeLinksAbsolute` setting to rewrite relative links to be absolute.
+- Added a `MakeLinksRootRelative` setting to rewrite relative links to be root-relative.
+- Suppressed archive output when there's no documents to archive.
+- Added the `CacheDocuments` module to additional pipelines for faster rebuild times.
+- Added an `ArchiveKeyComparer` metadata that allows specifying a specific comparer for use with archive groups (usually with script metadata).
 - Added ability for all pipelines to ensure every document gets a `Published` value, either from an existing value or from the file name or modified date.
 - Added a `PublishedUsesLastModifiedDate` setting to control whether a file modified date should be used for getting published dates.
 - Added `settings` as a default settings file name in themes (with support for JSON, YAML, or XML formats).
